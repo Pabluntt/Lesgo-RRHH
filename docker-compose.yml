@@ -6,6 +6,7 @@ services:
     environment:
       NODE_ENV: production
       PORT: 3000
+      JWT_SECRET: ${JWT_SECRET:-lesgo-rrhh-local-demo-secret-change-me}
     ports:
       - "3000:3000"
     restart: unless-stopped
