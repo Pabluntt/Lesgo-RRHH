@@ -170,27 +170,27 @@ export class HrService {
     return request
   }
 
-  createEmployee(body: { name: string; rut: string; role: string }) {
+  createEmployee(body: { name: string; surname: string; rut: string; role: string }) {
     const name = text(body.name, 'Nombre')
+    const surname = text(body.surname, 'Apellido')
     const normalizedRut = rut(body.rut)
     if (!roles.includes(body.role)) throw new BadRequestException('Rol inválido')
     if (this.employees.some(item => item.rut === normalizedRut)) throw new BadRequestException('Ya existe un empleado con ese RUT')
-    const employee: Employee = { id: Math.max(...this.employees.map(item => item.id)) + 1, name, rut: normalizedRut, role: body.role, department: 'Por asignar', jobTitle: 'Por asignar', email: '', status: 'Presente', vacationDays: 15, profileComplete: false }
+    const employee: Employee = { id: Math.max(...this.employees.map(item => item.id)) + 1, name, surname, rut: normalizedRut, role: body.role, department: 'Por asignar', jobTitle: 'Por asignar', email: '', status: 'Presente', vacationDays: 15, profileComplete: false }
     this.employees.push(employee)
     return employee
   }
 
-  completeProfile(body: { surname: string; email: string; phone: string; address: string; birthDate: string }, user: AuthenticatedUser) {
+  completeProfile(body: { email: string; phone: string; address: string; birthDate: string }, user: AuthenticatedUser) {
     const employee = this.employees.find(item => item.id === user.employeeId)
     if (!employee) throw new NotFoundException('Empleado no encontrado')
-    const surname = text(body.surname, 'Apellido')
     const email = text(body.email, 'Correo', 150)
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Correo inválido')
     const phone = text(body.phone, 'Teléfono', 30)
     const address = text(body.address, 'Dirección', 255)
     const birthDate = date(body.birthDate)
     if (birthDate >= new Date().toISOString().slice(0, 10)) throw new BadRequestException('Fecha de nacimiento inválida')
-    Object.assign(employee, { surname, email, phone, address, birthDate, profileComplete: true })
+    Object.assign(employee, { email, phone, address, birthDate, profileComplete: true })
     this.addLog(user, 'Completó perfil', `Empleado #${employee.id}`)
     return employee
   }

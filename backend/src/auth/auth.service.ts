@@ -20,7 +20,7 @@ const demoUsers: DemoUser[] = [
 export class AuthService {
   constructor(private readonly jwtService: JwtService, private readonly hr: HrService) {}
 
-  createUser(body: { username: string; password: string; name: string; rut: string; role: string }, actor: AuthenticatedUser) {
+  createUser(body: { username: string; password: string; name: string; surname: string; rut: string; role: string }, actor: AuthenticatedUser) {
     this.hr.requireManager(actor)
     const username = text(body.username, 'Usuario', 50).toLowerCase()
     if (!/^[a-z0-9._-]+$/.test(username)) throw new BadRequestException('Usuario: utiliza letras, números, puntos o guiones')

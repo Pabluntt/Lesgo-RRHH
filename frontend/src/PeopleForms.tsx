@@ -27,10 +27,11 @@ export function UserForm({ token, roles, onSaved }: Props & { roles: string[] })
   const state = useSubmit(token, '/hr/users', onSaved)
   return <form className="people-form data-card" onSubmit={event => state.submit(event)}>
     <h2>Crear usuario y empleado asociado</h2>
-    <p>El empleado completará su apellido y datos personales al iniciar sesión por primera vez.</p>
+    <p>Registra nombre y apellido aquí. El empleado completará sus datos de contacto y nacimiento al iniciar sesión por primera vez.</p>
     <label>Nombre de usuario<input name="username" required maxLength={50} pattern="[a-zA-Z0-9._\-]+" autoComplete="off" /></label>
     <label>Contraseña inicial<input name="password" type="password" required minLength={8} maxLength={72} autoComplete="new-password" /></label>
     <label>Nombre del empleado<input name="name" required maxLength={100} /></label>
+    <label>Apellido del empleado<input name="surname" required maxLength={100} autoComplete="family-name" /></label>
     <label>RUT<input name="rut" placeholder="12345678-5" required maxLength={15} /></label>
     <label>Rol<select name="role" required defaultValue=""><option value="" disabled>Selecciona un rol</option>{roles.map(role => <option key={role}>{role}</option>)}</select></label>
     <FormStatus {...state} />
@@ -43,7 +44,6 @@ export function ProfileForm({ token, employee, onSaved, onLogout }: Props & { em
   return <main className="onboarding"><form className="people-form data-card" onSubmit={event => state.submit(event)}>
     <h1>Completa tu perfil</h1><p>Hola, {employee.name}. Completa estos datos para acceder al módulo.</p>
     <p>RUT: <strong>{employee.rut}</strong></p>
-    <label>Apellido<input name="surname" required maxLength={100} autoComplete="family-name" /></label>
     <label>Fecha de nacimiento<input name="birthDate" type="date" required max={new Date().toISOString().slice(0, 10)} /></label>
     <label>Correo<input name="email" type="email" required maxLength={150} autoComplete="email" /></label>
     <label>Teléfono<input name="phone" type="tel" required maxLength={30} autoComplete="tel" /></label>

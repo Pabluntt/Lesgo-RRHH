@@ -8,16 +8,16 @@ con `id_empleado`, como en `usuario`. La contraseña se guarda como hash bcrypt.
 Los diez roles del selector proceden del catálogo de `02_test.sql`; la asignación
 representa `empleado_rol`. En esta demo se asigna un único rol por cuenta.
 
-El formulario requiere nombre de usuario, contraseña, nombre del empleado, RUT y rol.
+El formulario requiere nombre de usuario, contraseña, nombre y apellido del empleado, RUT y rol.
 El RUT se normaliza y valida con módulo 11; usuario y RUT son únicos. Un RUT ya
 registrado se rechaza: este flujo crea un empleado nuevo, no reasigna cuentas existentes.
-El primer inicio exige apellido, fecha de nacimiento, correo, teléfono y dirección.
+El primer inicio exige fecha de nacimiento, correo, teléfono y dirección. El apellido
+se guarda al crear el usuario y no se solicita ni modifica durante este paso.
 Cargo y departamento quedan por asignar por RRHH; no los elige el empleado.
 
 El SQL actual necesita ampliaciones antes de persistir este flujo:
 - `usuario.nombre_usuario` único (no existe en `03_usuario.sql`).
 - Indicador `perfil_completo` o equivalente; no confundir con `debe_cambiar_clave`.
-- Resolver el apellido obligatorio del empleado al crear una ficha provisional.
 - `fecha_ingreso` debe definirse administrativamente al integrar persistencia.
 - Saldo/registro de movimientos de vacaciones y calendario de feriados.
 

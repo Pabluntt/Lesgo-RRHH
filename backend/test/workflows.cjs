@@ -3,7 +3,7 @@ const assert = require('node:assert/strict')
 const { spawn } = require('node:child_process')
 
 test('Usuarios, perfil inicial, permisos y reserva de días hábiles', async () => {
-  const server = spawn(process.execPath, ['backend/dist/main.js'], { env: { ...process.env, PORT: '3109' }, stdio: 'ignore' })
+  const server = spawn(process.execPath, ['backend/dist/main.js'], { env: { ...process.env, PORT: '3109' }, stdio: ['ignore', 'ignore', 'inherit'] })
   const base = 'http://localhost:3109'
   async function api(path, token, body, status = 200) {
     const response = await fetch(base + path, { method: body ? 'POST' : 'GET', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: body ? JSON.stringify(body) : undefined })
@@ -18,7 +18,8 @@ test('Usuarios, perfil inicial, permisos y reserva de días hábiles', async () 
     }
     assert.ok(ready, 'Backend iniciado')
     const admin = (await api('/auth/login', '', { username: 'admin', password: 'admin123' }, 201)).accessToken
-    const payload = { username: 'prueba', password: 'Prueba123!', name: 'Prueba', rut: '12345678-5', role: 'Analista' }
+    const payload = { username: 'prueba', password: 'Prueba123!', name: 'Prueba', surname: 'Apellido', rut: '12345678-5', role: 'Analista' }
+    await api('/hr/users', admin, { ...payload, surname: '' }, 400)
     await api('/hr/users', admin, { ...payload, rut: '12345678-1' }, 400)
     const user = await api('/hr/users', admin, payload, 201)
     await api('/hr/users', admin, payload, 400)
@@ -29,7 +30,8 @@ test('Usuarios, perfil inicial, permisos y reserva de días hábiles', async () 
     assert.equal(dashboard.employees.length, 1)
     const vacation = { employeeId: user.employeeId, startDate: '2030-03-01', endDate: '2030-03-04' }
     await api('/hr/vacations', token, vacation, 403)
-    await api('/hr/profile', token, { surname: 'Apellido', email: 'prueba@example.test', phone: '+56912345678', address: 'Calle de prueba 123', birthDate: '1990-01-01' }, 201)
+    await api('/hr/profile', token, { email: 'prueba@example.test', phone: '+56912345678', address: 'Calle de prueba 123', birthDate: '1990-01-01' }, 201)
+    assert.equal((await api('/hr/dashboard', token)).account.employee.surname, 'Apellido')
     await api('/hr/users', token, { ...payload, username: 'ilegal' }, 403)
     await api('/hr/vacations', token, { ...vacation, employeeId: 1 }, 403)
     await api('/hr/vacations', token, { ...vacation, startDate: '2030-03-02', endDate: '2030-03-03' }, 400)
