@@ -5,6 +5,8 @@ import { AuthService } from './auth/auth.service'
 import { JwtAuthGuard } from './auth/jwt-auth.guard'
 import { HrController } from './hr/hr.controller'
 import { HrService } from './hr/hr.service'
+import { HrRepository } from './hr/hr.repository'
+import { DatabaseService } from './db/database.service'
 import { HealthController } from './health.controller'
 
 @Module({
@@ -15,6 +17,6 @@ import { HealthController } from './health.controller'
     }),
   ],
   controllers: [HealthController, AuthController, HrController],
-  providers: [AuthService, HrService, JwtAuthGuard],
+  providers: [DatabaseService, HrRepository, AuthService, HrService, JwtAuthGuard],
 })
 export class AppModule {}

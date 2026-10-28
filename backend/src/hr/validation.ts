@@ -1,6 +1,15 @@
 import { BadRequestException } from '@nestjs/common'
 
-export const roles = ['Administrador', 'Jefe RRHH', 'Coordinador', 'Analista', 'Asistente', 'Supervisor', 'Contador', 'Desarrollador', 'Vendedor', 'Auditor']
+export const managerRoles = ['Administrador', 'Jefe RRHH']
+
+// Saldo inicial de demostración: sin devengo ni reinicio anual.
+export const initialVacationDays = 15
+
+export function email(value: unknown) {
+  const normalized = text(value, 'Correo', 150).toLowerCase()
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalized)) throw new BadRequestException('Correo inválido')
+  return normalized
+}
 
 export function text(value: unknown, label: string, max = 100): string {
   if (typeof value !== 'string' || !value.trim() || value.trim().length > max) throw new BadRequestException(`${label} es obligatorio (máximo ${max} caracteres)`)

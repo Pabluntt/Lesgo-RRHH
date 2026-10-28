@@ -18,12 +18,13 @@ export interface Employee {
 export interface AbsenceRequest {
   id: number
   employeeId: number
-  type: 'Vacaciones' | 'Licencia médica' | 'Permiso'
+  // Nombre de tipo_ausencia; 'Vacaciones' se trata aparte del resto de licencias y permisos.
+  type: string
   startDate: string
   endDate: string
   days: number
   reason: string
-  status: 'Pendiente' | 'Aprobada' | 'Rechazada'
+  status: 'Pendiente' | 'Aprobada' | 'Rechazada' | 'Cancelada' | 'En curso' | 'Finalizada'
 }
 
 export interface EmploymentContract {

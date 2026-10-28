@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
-import { businessDays, date, roles, rut, text } from './validation'
+import { businessDays, date, managerRoles, text } from './validation'
 import { AuthenticatedUser } from '../auth/auth.types'
 import { AbsenceRequest, AuditLog, Employee, EmploymentContract } from './hr.types'
+import { HrRepository } from './hr.repository'
 
 const today = new Date()
 const asDate = (offsetDays: number) => {
@@ -12,7 +13,10 @@ const asDate = (offsetDays: number) => {
 
 @Injectable()
 export class HrService {
+  constructor(private readonly repository: HrRepository) {}
+
   // Datos de demostración en memoria: se reemplazarán por repositorios y BD.
+  // Ya persisten en BD: cuentas creadas, perfil inicial y solicitudes de vacaciones de usuarios de BD.
   private readonly employees: Employee[] = [
     { id: 1, name: 'Alexandra Reyes', email: 'admin@lesgo.test', department: 'Recursos Humanos', jobTitle: 'Administradora', role: 'Administración', status: 'Presente' },
     { id: 2, name: 'Mateo Silva', email: 'mateo@lesgo.test', department: 'Tecnología', jobTitle: 'Desarrollador', role: 'Tecnología', status: 'Presente' },
@@ -54,7 +58,9 @@ export class HrService {
     if (this.contractCheckTimer) clearInterval(this.contractCheckTimer)
   }
 
-  getDashboard(user: AuthenticatedUser) {
+  async getDashboard(user: AuthenticatedUser) {
+    const roles = await this.repository.roles()
+    if (user.source === 'db') return this.getDatabaseDashboard(user, roles)
     this.finalizeExpiredContracts()
     const employees = this.employees.map((employee) => {
       const approvedAbsence = this.requests.some((request) =>
@@ -65,7 +71,7 @@ export class HrService {
       )
       return approvedAbsence ? { ...employee, status: 'Ausente' as const } : employee
     })
-    const manager = ['Administrador', 'Jefe RRHH'].includes(user.role)
+    const manager = managerRoles.includes(user.role)
     return {
       roles,
       employees: (manager ? employees : employees.filter(item => item.id === user.employeeId)).map(item => ({ ...item, vacationDays: this.availableDays(item.id) })),
@@ -79,8 +85,23 @@ export class HrService {
     }
   }
 
-  decideRequest(id: number, decision: 'Aprobada' | 'Rechazada', user: AuthenticatedUser, reason?: string) {
-    this.requireManager(user)
+  // Usuario de BD: su empleado y solicitudes vienen de rrhh.*; la vista de equipo sigue mockeada.
+  private async getDatabaseDashboard(user: AuthenticatedUser, roles: string[]) {
+    const [self, ownRequests] = await Promise.all([this.repository.employee(user.employeeId), this.repository.requests(user.employeeId)])
+    const manager = managerRoles.includes(user.role)
+    const selfList = self ? [self] : []
+    return {
+      roles,
+      employees: manager ? [...this.employees.map(item => ({ ...item, vacationDays: this.availableDays(item.id) })), ...selfList] : selfList,
+      requests: manager ? [...this.requests, ...ownRequests] : ownRequests,
+      contracts: manager ? this.contracts : [],
+      logs: manager ? this.logs : this.logs.filter(item => item.userId === user.id && item.username === user.username),
+      account: { ...user, employee: self },
+    }
+  }
+
+  async decideRequest(id: number, decision: 'Aprobada' | 'Rechazada', user: AuthenticatedUser, reason?: string) {
+    await this.requireManager(user)
     if (decision !== 'Aprobada' && decision !== 'Rechazada') {
       throw new BadRequestException('La decisión debe ser Aprobada o Rechazada')
     }
@@ -92,8 +113,8 @@ export class HrService {
     return request
   }
 
-  renewContract(id: number, user: AuthenticatedUser) {
-    this.requireManager(user)
+  async renewContract(id: number, user: AuthenticatedUser) {
+    await this.requireManager(user)
     const contract = this.findContract(id)
     if (contract.status !== 'Vigente') throw new BadRequestException('Solo se pueden renovar contratos vigentes')
     const previousEnd = new Date(`${contract.endDate}T00:00:00`)
@@ -106,8 +127,8 @@ export class HrService {
     return contract
   }
 
-  terminateContract(id: number, user: AuthenticatedUser) {
-    this.requireManager(user)
+  async terminateContract(id: number, user: AuthenticatedUser) {
+    await this.requireManager(user)
     const contract = this.findContract(id)
     if (contract.status !== 'Vigente') throw new BadRequestException('El contrato ya está finalizado')
     contract.status = 'Terminado anticipadamente'
@@ -141,13 +162,14 @@ export class HrService {
     }
   }
 
-  requireManager(user: AuthenticatedUser) {
-    if (!['Administrador', 'Jefe RRHH'].includes(user.role)) throw new ForbiddenException('Se requiere rol Administrador o Jefe RRHH')
-    this.requireProfile(user)
+  async requireManager(user: AuthenticatedUser) {
+    if (!managerRoles.includes(user.role)) throw new ForbiddenException('Se requiere rol Administrador o Jefe RRHH')
+    await this.requireProfile(user)
   }
 
-  requireProfile(user: AuthenticatedUser) {
-    if (!this.employees.find(item => item.id === user.employeeId)?.profileComplete) throw new ForbiddenException('Completa tu perfil antes de continuar')
+  async requireProfile(user: AuthenticatedUser) {
+    const employee = user.source === 'db' ? await this.repository.employee(user.employeeId) : this.employees.find(item => item.id === user.employeeId)
+    if (!employee?.profileComplete) throw new ForbiddenException('Completa tu perfil antes de continuar')
   }
 
   availableDays(id: number) {
@@ -155,14 +177,20 @@ export class HrService {
     return (employee?.vacationDays ?? 0) - this.requests.filter(item => item.employeeId === id && item.type === 'Vacaciones' && item.status !== 'Rechazada').reduce((sum, item) => sum + item.days, 0)
   }
 
-  createVacation(body: { employeeId: number; startDate: string; endDate: string }, user: AuthenticatedUser) {
-    this.requireProfile(user)
-    if (body.employeeId !== user.employeeId) this.requireManager(user)
-    const employee = this.employees.find(item => item.id === body.employeeId)
-    if (!employee) throw new NotFoundException('Empleado no encontrado')
+  async createVacation(body: { employeeId: number; startDate: string; endDate: string }, user: AuthenticatedUser) {
+    await this.requireProfile(user)
+    if (body.employeeId !== user.employeeId) await this.requireManager(user)
     const days = businessDays(body.startDate, body.endDate)
     if (body.startDate < new Date().toISOString().slice(0, 10)) throw new BadRequestException('La fecha de inicio no puede estar en el pasado')
-    if (!days || days > this.availableDays(employee.id)) throw new BadRequestException('El rango debe tener días hábiles y no superar el saldo disponible')
+    if (!days) throw new BadRequestException('El rango debe tener días hábiles y no superar el saldo disponible')
+    if (user.source === 'db') {
+      const request = await this.repository.createVacation(body.employeeId, body.startDate, body.endDate, days)
+      this.addLog(user, 'Solicitó vacaciones', `Solicitud #${request.id}, empleado #${body.employeeId}, ${days} días hábiles`)
+      return request
+    }
+    const employee = this.employees.find(item => item.id === body.employeeId)
+    if (!employee) throw new NotFoundException('Empleado no encontrado')
+    if (days > this.availableDays(employee.id)) throw new BadRequestException('El rango debe tener días hábiles y no superar el saldo disponible')
     if (this.requests.some(item => item.employeeId === employee.id && item.status !== 'Rechazada' && item.startDate <= body.endDate && item.endDate >= body.startDate)) throw new BadRequestException('Existe una solicitud que se superpone con estas fechas')
     const request: AbsenceRequest = { id: Math.max(0, ...this.requests.map(item => item.id)) + 1, employeeId: employee.id, type: 'Vacaciones', startDate: body.startDate, endDate: body.endDate, days, reason: 'Solicitud de vacaciones', status: 'Pendiente' }
     this.requests.push(request)
@@ -170,29 +198,21 @@ export class HrService {
     return request
   }
 
-  createEmployee(body: { name: string; surname: string; rut: string; role: string }) {
-    const name = text(body.name, 'Nombre')
-    const surname = text(body.surname, 'Apellido')
-    const normalizedRut = rut(body.rut)
-    if (!roles.includes(body.role)) throw new BadRequestException('Rol inválido')
-    if (this.employees.some(item => item.rut === normalizedRut)) throw new BadRequestException('Ya existe un empleado con ese RUT')
-    const employee: Employee = { id: Math.max(...this.employees.map(item => item.id)) + 1, name, surname, rut: normalizedRut, role: body.role, department: 'Por asignar', jobTitle: 'Por asignar', email: '', status: 'Presente', vacationDays: 15, profileComplete: false }
-    this.employees.push(employee)
-    return employee
-  }
-
-  completeProfile(body: { email: string; phone: string; address: string; birthDate: string }, user: AuthenticatedUser) {
-    const employee = this.employees.find(item => item.id === user.employeeId)
-    if (!employee) throw new NotFoundException('Empleado no encontrado')
-    const email = text(body.email, 'Correo', 150)
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Correo inválido')
+  // El correo lo registra RRHH al crear la cuenta (es el identificador de login), por eso no se pide aquí.
+  async completeProfile(body: { phone: string; address: string; birthDate: string }, user: AuthenticatedUser) {
     const phone = text(body.phone, 'Teléfono', 30)
     const address = text(body.address, 'Dirección', 255)
     const birthDate = date(body.birthDate)
     if (birthDate >= new Date().toISOString().slice(0, 10)) throw new BadRequestException('Fecha de nacimiento inválida')
-    Object.assign(employee, { email, phone, address, birthDate, profileComplete: true })
-    this.addLog(user, 'Completó perfil', `Empleado #${employee.id}`)
-    return employee
+    if (user.source === 'db') {
+      await this.repository.completeProfile(user.employeeId, { phone, address, birthDate })
+    } else {
+      const employee = this.employees.find(item => item.id === user.employeeId)
+      if (!employee) throw new NotFoundException('Empleado no encontrado')
+      Object.assign(employee, { phone, address, birthDate, profileComplete: true })
+    }
+    this.addLog(user, 'Completó perfil', `Empleado #${user.employeeId}`)
+    return { employeeId: user.employeeId, profileComplete: true }
   }
 
   addLog(user: AuthenticatedUser, action: string, details: string) {

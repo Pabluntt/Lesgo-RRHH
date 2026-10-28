@@ -1,5 +1,26 @@
 # Usuarios y vacaciones: integración provisional
 
+## Persistencia en PostgreSQL (Neon)
+
+El backend se conecta con `pg` usando `PGHOST`, `PGDATABASE`, `PGUSER`, `PGPASSWORD` y
+`PGSSLMODE` desde `backend/.env` (ignorado por git; plantilla en `backend/.env.example`).
+Docker Compose carga ese mismo archivo. Las consultas viven en `backend/src/hr/hr.repository.ts`.
+
+Persisten en el esquema `rrhh`:
+- **Alta de usuario:** en una transacción se insertan `empleado` (con `fecha_ingreso = CURRENT_DATE`),
+  `empleado_rol`, `usuario` (hash bcrypt) y un registro en `auditoria`. El catálogo de roles se lee de `rol`.
+- **Login:** como indica el esquema, las cuentas de BD inician sesión con el **correo** de `empleado`.
+  Se actualizan `ultimo_login` e `intentos_fallidos`; solo entran cuentas con `estado = 'activo'`.
+  El usuario `admin` / `admin123` sigue siendo de demostración en memoria.
+- **Perfil inicial:** teléfono, dirección y fecha de nacimiento se guardan en `empleado`. El perfil
+  se considera completo cuando esos campos y el correo tienen valor (el esquema no tiene un indicador propio).
+- **Solicitud de vacaciones** de un usuario de BD: se inserta en `solicitud_ausencia` con el tipo
+  `Vacaciones` y estado `pendiente`, más su registro en `auditoria`. Saldo y superposición se validan
+  contra la BD dentro de la transacción.
+
+Sigue mockeado: plantilla, contratos, licencias, aprobación/rechazo de solicitudes y la actividad de
+"Mi Cuenta". Por eso las solicitudes guardadas en BD aún no aparecen en el panel de aprobación del admin demo.
+
 ## Relación con el modelo SQL
 
 Se revisaron `sql/01_create_rrhh_schema.sql`, `02_test.sql` y `03_usuario.sql`.
@@ -45,6 +66,8 @@ generan logs con actor autenticado, fecha/hora y empleado afectado en el detalle
 Endpoints autenticados: `POST /hr/users`, `POST /hr/profile`, `POST /hr/vacations`.
 `GET /hr/dashboard` devuelve catálogo de roles, perfil y saldo disponible.
 
-**No hay BD:** cuentas, perfiles, saldos y solicitudes se pierden al reiniciar el backend.
-Para verificar los flujos desde la raíz: `npm run build` y
-`node --test backend/test/workflows.cjs` (utiliza temporalmente el puerto 3109).
+Las cuentas, perfiles y solicitudes de usuarios de BD sobreviven a reinicios; el resto de datos
+de demostración se reinicia con el backend.
+
+**Pendiente:** `backend/test/workflows.cjs` corresponde al flujo en memoria (alta con nombre de usuario)
+y debe adaptarse; ahora escribiría en la BD compartida.
