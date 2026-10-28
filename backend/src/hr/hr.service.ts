@@ -1,4 +1,5 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleDestroy, OnModuleInit } from '@nestjs/common'
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { businessDays, date, roles, rut, text } from './validation'
 import { AuthenticatedUser } from '../auth/auth.types'
 import { AbsenceRequest, AuditLog, Employee, EmploymentContract } from './hr.types'
 
@@ -39,6 +40,12 @@ export class HrService {
   private contractCheckTimer?: NodeJS.Timeout
 
   onModuleInit() {
+    this.employees.forEach((employee, index) => {
+      employee.rut = `${String(index + 1).repeat(8)}-${index + 1}`
+      employee.vacationDays = 15
+      employee.profileComplete = true
+    })
+    this.requests.filter(item => item.type === 'Vacaciones').forEach(item => { item.days = businessDays(item.startDate, item.endDate) })
     this.finalizeExpiredContracts()
     this.contractCheckTimer = setInterval(() => this.finalizeExpiredContracts(), 60_000)
   }
@@ -58,11 +65,13 @@ export class HrService {
       )
       return approvedAbsence ? { ...employee, status: 'Ausente' as const } : employee
     })
+    const manager = ['Administrador', 'Jefe RRHH'].includes(user.role)
     return {
-      employees,
-      requests: this.requests,
-      contracts: this.contracts,
-      logs: this.logs,
+      roles,
+      employees: (manager ? employees : employees.filter(item => item.id === user.employeeId)).map(item => ({ ...item, vacationDays: this.availableDays(item.id) })),
+      requests: manager ? this.requests : this.requests.filter(item => item.employeeId === user.employeeId),
+      contracts: manager ? this.contracts : this.contracts.filter(item => item.employeeId === user.employeeId),
+      logs: manager ? this.logs : this.logs.filter(item => item.userId === user.id),
       account: {
         ...user,
         employee: employees.find((employee) => employee.id === user.employeeId),
@@ -71,6 +80,7 @@ export class HrService {
   }
 
   decideRequest(id: number, decision: 'Aprobada' | 'Rechazada', user: AuthenticatedUser, reason?: string) {
+    this.requireManager(user)
     if (decision !== 'Aprobada' && decision !== 'Rechazada') {
       throw new BadRequestException('La decisión debe ser Aprobada o Rechazada')
     }
@@ -83,6 +93,7 @@ export class HrService {
   }
 
   renewContract(id: number, user: AuthenticatedUser) {
+    this.requireManager(user)
     const contract = this.findContract(id)
     if (contract.status !== 'Vigente') throw new BadRequestException('Solo se pueden renovar contratos vigentes')
     const previousEnd = new Date(`${contract.endDate}T00:00:00`)
@@ -96,6 +107,7 @@ export class HrService {
   }
 
   terminateContract(id: number, user: AuthenticatedUser) {
+    this.requireManager(user)
     const contract = this.findContract(id)
     if (contract.status !== 'Vigente') throw new BadRequestException('El contrato ya está finalizado')
     contract.status = 'Terminado anticipadamente'
@@ -129,7 +141,61 @@ export class HrService {
     }
   }
 
-  private addLog(user: AuthenticatedUser, action: string, details: string) {
+  requireManager(user: AuthenticatedUser) {
+    if (!['Administrador', 'Jefe RRHH'].includes(user.role)) throw new ForbiddenException('Se requiere rol Administrador o Jefe RRHH')
+    this.requireProfile(user)
+  }
+
+  requireProfile(user: AuthenticatedUser) {
+    if (!this.employees.find(item => item.id === user.employeeId)?.profileComplete) throw new ForbiddenException('Completa tu perfil antes de continuar')
+  }
+
+  availableDays(id: number) {
+    const employee = this.employees.find(item => item.id === id)
+    return (employee?.vacationDays ?? 0) - this.requests.filter(item => item.employeeId === id && item.type === 'Vacaciones' && item.status !== 'Rechazada').reduce((sum, item) => sum + item.days, 0)
+  }
+
+  createVacation(body: { employeeId: number; startDate: string; endDate: string }, user: AuthenticatedUser) {
+    this.requireProfile(user)
+    if (body.employeeId !== user.employeeId) this.requireManager(user)
+    const employee = this.employees.find(item => item.id === body.employeeId)
+    if (!employee) throw new NotFoundException('Empleado no encontrado')
+    const days = businessDays(body.startDate, body.endDate)
+    if (body.startDate < new Date().toISOString().slice(0, 10)) throw new BadRequestException('La fecha de inicio no puede estar en el pasado')
+    if (!days || days > this.availableDays(employee.id)) throw new BadRequestException('El rango debe tener días hábiles y no superar el saldo disponible')
+    if (this.requests.some(item => item.employeeId === employee.id && item.status !== 'Rechazada' && item.startDate <= body.endDate && item.endDate >= body.startDate)) throw new BadRequestException('Existe una solicitud que se superpone con estas fechas')
+    const request: AbsenceRequest = { id: Math.max(0, ...this.requests.map(item => item.id)) + 1, employeeId: employee.id, type: 'Vacaciones', startDate: body.startDate, endDate: body.endDate, days, reason: 'Solicitud de vacaciones', status: 'Pendiente' }
+    this.requests.push(request)
+    this.addLog(user, 'Solicitó vacaciones', `Solicitud #${request.id}, empleado #${employee.id}, ${days} días hábiles`)
+    return request
+  }
+
+  createEmployee(body: { name: string; rut: string; role: string }) {
+    const name = text(body.name, 'Nombre')
+    const normalizedRut = rut(body.rut)
+    if (!roles.includes(body.role)) throw new BadRequestException('Rol inválido')
+    if (this.employees.some(item => item.rut === normalizedRut)) throw new BadRequestException('Ya existe un empleado con ese RUT')
+    const employee: Employee = { id: Math.max(...this.employees.map(item => item.id)) + 1, name, rut: normalizedRut, role: body.role, department: 'Por asignar', jobTitle: 'Por asignar', email: '', status: 'Presente', vacationDays: 15, profileComplete: false }
+    this.employees.push(employee)
+    return employee
+  }
+
+  completeProfile(body: { surname: string; email: string; phone: string; address: string; birthDate: string }, user: AuthenticatedUser) {
+    const employee = this.employees.find(item => item.id === user.employeeId)
+    if (!employee) throw new NotFoundException('Empleado no encontrado')
+    const surname = text(body.surname, 'Apellido')
+    const email = text(body.email, 'Correo', 150)
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new BadRequestException('Correo inválido')
+    const phone = text(body.phone, 'Teléfono', 30)
+    const address = text(body.address, 'Dirección', 255)
+    const birthDate = date(body.birthDate)
+    if (birthDate >= new Date().toISOString().slice(0, 10)) throw new BadRequestException('Fecha de nacimiento inválida')
+    Object.assign(employee, { surname, email, phone, address, birthDate, profileComplete: true })
+    this.addLog(user, 'Completó perfil', `Empleado #${employee.id}`)
+    return employee
+  }
+
+  addLog(user: AuthenticatedUser, action: string, details: string) {
     this.logs.unshift({
       id: this.nextLogId++,
       userId: user.id,

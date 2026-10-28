@@ -1,4 +1,11 @@
 export interface Employee {
+  rut?: string
+  vacationDays?: number
+  profileComplete?: boolean
+  surname?: string
+  birthDate?: string
+  phone?: string
+  address?: string
   id: number
   name: string
   email: string

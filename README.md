@@ -64,9 +64,11 @@ docker compose up --build
 
 Direcciones con Docker:
 
-- Frontend (Nginx): <http://localhost:8080>
-- Backend (NestJS): <http://localhost:3000>
-- Endpoint de estado: <http://localhost:3000/>
+- Frontend (Nginx): <http://localhost:8081>
+- Backend (NestJS): <http://localhost:3001>
+- Endpoint de estado: <http://localhost:3001/>
+
+En Docker, el navegador consume la API por la ruta `/api` del frontend; Nginx la reenvía al servicio backend dentro de la red de Compose.
 
 Para iniciar en segundo plano, añade `-d`:
 
@@ -83,6 +85,10 @@ docker compose down
 El secreto JWT se puede configurar mediante `JWT_SECRET` en el entorno o en un archivo `.env` basado en `.env.example`. El valor predeterminado de Compose es solo para desarrollo local.
 
 ## Funcionalidades demo
+
+Los formularios de alta de usuarios, perfil inicial obligatorio y solicitud de vacaciones
+están documentados en [Usuarios y vacaciones](docs/usuarios-vacaciones.md), incluyendo
+relaciones con el SQL, permisos, saldo inicial y calendario hábil de prueba.
 
 - **Plantilla:** empleados de ejemplo agrupados por rol, con cargo, departamento y estado.
 - **Licencias y vacaciones:** solicitudes de ejemplo con aprobación/rechazo. Las aprobaciones se reflejan como ausencia cuando su rango incluye la fecha actual.

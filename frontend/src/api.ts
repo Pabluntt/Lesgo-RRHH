@@ -8,6 +8,9 @@ export interface SessionUser {
 }
 
 export interface Employee {
+  rut?: string
+  vacationDays?: number
+  profileComplete?: boolean
   id: number
   name: string
   email: string
@@ -49,6 +52,7 @@ export interface AuditLog {
 }
 
 export interface DashboardData {
+  roles: string[]
   employees: Employee[]
   requests: AbsenceRequest[]
   contracts: EmploymentContract[]
@@ -56,7 +60,7 @@ export interface DashboardData {
   account: SessionUser & { employee?: Employee }
 }
 
-async function request<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
+export async function request<T>(path: string, token: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}${path}`, {
     ...init,
     headers: {

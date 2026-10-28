@@ -1,4 +1,5 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react'
+import { UserForm, ProfileForm, VacationForm } from './PeopleForms'
 import {
   AbsenceRequest,
   AuditLog,
@@ -12,7 +13,7 @@ import {
   terminateContract,
 } from './api'
 
-type Section = 'Plantilla' | 'Licencias' | 'Vacaciones' | 'Mi Cuenta' | 'Contratos' | 'Desvinculaciones'
+type Section = 'Plantilla' | 'Licencias' | 'Vacaciones' | 'Mi Cuenta' | 'Contratos' | 'Desvinculaciones' | 'Crear usuarios'
 
 const navItems: { name: Section; icon: string; group: string }[] = [
   { name: 'Plantilla', icon: '◉', group: 'PERSONAS' },
@@ -21,6 +22,7 @@ const navItems: { name: Section; icon: string; group: string }[] = [
   { name: 'Contratos', icon: '▣', group: 'GESTIÓN' },
   { name: 'Desvinculaciones', icon: '↗', group: 'GESTIÓN' },
   { name: 'Mi Cuenta', icon: '○', group: 'CUENTA' },
+  { name: 'Crear usuarios', icon: '+', group: 'CUENTA' },
 ]
 
 function formatDate(value: string) {
@@ -87,6 +89,8 @@ function App() {
   }
 
   const employee = dashboard.account.employee
+  const manager = ['Administrador', 'Jefe RRHH'].includes(dashboard.account.role)
+  if (employee && !employee.profileComplete) return <ProfileForm token={token} employee={employee} onSaved={() => refresh(token)} onLogout={handleLogout} />
   const pendingCount = dashboard.requests.filter((request) => request.status === 'Pendiente').length
 
   return (
@@ -95,8 +99,8 @@ function App() {
         <div className="brand"><span className="brand-mark">l</span><span>Lesgo</span></div>
         <div className="workspace-switch"><span className="workspace-avatar">L</span><span><b>Lesgo Company</b><small>Workspace de empresa</small></span><span className="chevron">⌄</span></div>
         <div className="nav-list">
-          {navItems.map((item, index) => (
-            <div key={item.group}>
+          {navItems.filter(item => manager || !['Crear usuarios', 'Desvinculaciones'].includes(item.name)).map((item, index) => (
+            <div key={item.name}>
               {(index === 0 || navItems[index - 1].group !== item.group) && <p className="nav-label">{item.group}</p>}
               <button className={`nav-item ${section === item.name ? 'active' : ''}`} onClick={() => { setSection(item.name); setNotice(''); setError('') }}>
                 <span className="nav-icon">{item.icon}</span>{item.name}
@@ -115,9 +119,11 @@ function App() {
           {error && <div className="alert alert-error">{error}<button onClick={() => setError('')}>×</button></div>}
           {notice && <div className="alert alert-success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
           {section === 'Plantilla' && <PeopleView employees={dashboard.employees} requests={dashboard.requests} contracts={dashboard.contracts} />}
-          {section === 'Licencias' && <RequestsView kind="Licencia médica" requests={dashboard.requests} employees={dashboard.employees} busy={busy} onDecision={(id, decision) => runAction(() => decideRequest(token, id, decision), `Solicitud ${decision.toLowerCase()}.`)} />}
-          {section === 'Vacaciones' && <RequestsView kind="Vacaciones" requests={dashboard.requests} employees={dashboard.employees} busy={busy} onDecision={(id, decision) => runAction(() => decideRequest(token, id, decision), `Solicitud ${decision.toLowerCase()}.`)} />}
-          {section === 'Contratos' && <ContractsView contracts={dashboard.contracts} employees={dashboard.employees} busy={busy} onRenew={(id) => runAction(() => renewContract(token, id), 'Contrato renovado por un año.')} onTerminate={(id) => runAction(() => terminateContract(token, id), 'Contrato terminado anticipadamente.')} />}
+          {section === 'Crear usuarios' && manager && <UserForm token={token} roles={dashboard.roles} onSaved={() => refresh(token)} />}
+          {section === 'Vacaciones' && <VacationForm token={token} employees={dashboard.employees} onSaved={() => refresh(token)} />}
+          {section === 'Licencias' && <RequestsView kind="Licencia médica" requests={dashboard.requests} employees={dashboard.employees} busy={busy || !manager} onDecision={(id, decision) => runAction(() => decideRequest(token, id, decision), `Solicitud ${decision.toLowerCase()}.`)} />}
+          {section === 'Vacaciones' && <RequestsView kind="Vacaciones" requests={dashboard.requests} employees={dashboard.employees} busy={busy || !manager} onDecision={(id, decision) => runAction(() => decideRequest(token, id, decision), `Solicitud ${decision.toLowerCase()}.`)} />}
+          {section === 'Contratos' && <ContractsView contracts={dashboard.contracts} employees={dashboard.employees} busy={busy || !manager} onRenew={(id) => runAction(() => renewContract(token, id), 'Contrato renovado por un año.')} onTerminate={(id) => runAction(() => terminateContract(token, id), 'Contrato terminado anticipadamente.')} />}
           {section === 'Mi Cuenta' && <AccountView account={dashboard.account} logs={dashboard.logs} />}
           {section === 'Desvinculaciones' && <TerminationView employees={dashboard.employees} />}
           <footer className="page-footer"><span>Lesgo People <span className="footer-dot">·</span> Gestión de talento</span><span>Panel de Recursos Humanos</span></footer>
@@ -135,6 +141,7 @@ function sectionDescription(section: Section) {
     'Mi Cuenta': 'Consulta la información de tu cuenta y perfil.',
     Contratos: 'Administra vigencias, renovaciones y alertas contractuales.',
     Desvinculaciones: 'Registro de procesos de salida y finiquitos.',
+    'Crear usuarios': 'Crea una cuenta ERP vinculada a un nuevo empleado y asigna su rol.',
   }
   return descriptions[section]
 }
