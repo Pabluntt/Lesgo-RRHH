@@ -5,7 +5,6 @@
 .people-form input, .people-form select { min-width: 0; width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 8px; background: white; color: #25233a; font: inherit; }
 .people-form h1, .people-form h2 { font-size: 22px; font-weight: 700; }
 .people-form p { font-size: 14px; line-height: 1.6; }
-.vacation-toolbar { margin-bottom: 18px; }
 .vacation-dialog { margin: auto; border: 0; border-radius: 12px; width: min(640px, 94vw); max-height: 90vh; overflow-y: auto; }
 .vacation-dialog::backdrop { background: #0008; }
 .onboarding { min-height: 100vh; display: grid; place-items: center; padding: 24px; }

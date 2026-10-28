@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from 'react'
+import { FormEvent, useRef, useState } from 'react'
 import { Employee, request } from './api'
 
 type Props = { token: string; onSaved: () => Promise<void> }
@@ -62,38 +62,29 @@ function daysBetween(start: string, end: string) {
   return days
 }
 
-export function VacationForm({ token, employees, onSaved }: Props & { employees: Employee[] }) {
+export function VacationForm({ token, employee, onSaved }: Props & { employee: Employee }) {
   const dialog = useRef<HTMLDialogElement>(null)
-  const [name, setName] = useState('')
-  const [rut, setRut] = useState('')
-  const [id, setId] = useState('')
   const [start, setStart] = useState('')
   const [end, setEnd] = useState('')
-  const filtered = employees.filter(employee => employee.name.toLocaleLowerCase().includes(name.toLocaleLowerCase()) && (employee.rut ?? '').replace(/\./g, '').toUpperCase().includes(rut.replace(/\./g, '').toUpperCase()))
-  const employee = filtered.find(item => item.id === Number(id))
   const days = daysBetween(start, end)
+  const available = employee.vacationDays ?? 0
   const state = useSubmit(token, '/hr/vacations', async () => { await onSaved(); dialog.current?.close(); setStart(''); setEnd('') })
-  useEffect(() => { if (!filtered.some(item => item.id === Number(id))) setId('') }, [name, rut, id, filtered])
-  return <div className="vacation-toolbar">
+  return <>
     <button className="primary-button" onClick={() => dialog.current?.showModal()}>+ Solicitar vacaciones</button>
     <dialog ref={dialog} className="vacation-dialog" aria-labelledby="vacation-title">
-      <form className="people-form" onSubmit={event => state.submit(event, { employeeId: Number(id), startDate: start, endDate: end })}>
+      <form className="people-form" onSubmit={event => state.submit(event, { employeeId: employee.id, startDate: start, endDate: end })}>
         <h2 id="vacation-title">Nueva solicitud de vacaciones</h2>
-        <label>Buscar por nombre<input value={name} onChange={event => setName(event.target.value)} /></label>
-        <label>Buscar por RUT<input value={rut} onChange={event => setRut(event.target.value)} placeholder="12345678-5" /></label>
-        <label>Empleado<select required value={id} onChange={event => setId(event.target.value)}><option value="">Selecciona un empleado</option>{filtered.map(item => <option key={item.id} value={item.id}>{item.name} — {item.rut}</option>)}</select></label>
-        {!filtered.length && <p>No hay empleados que coincidan con la búsqueda.</p>}
-        {employee && <p>Saldo disponible: <strong>{employee.vacationDays} días hábiles</strong> (descontadas solicitudes pendientes y aprobadas).</p>}
+        <p>Saldo disponible: <strong>{available} días hábiles</strong> (descontadas solicitudes pendientes y aprobadas).</p>
         <label>Inicio<input type="date" required min={new Date().toISOString().slice(0, 10)} value={start} onChange={event => setStart(event.target.value)} /></label>
         <label>Fin<input type="date" required min={start || new Date().toISOString().slice(0, 10)} value={end} onChange={event => setEnd(event.target.value)} /></label>
         <p>Días hábiles solicitados: <strong>{days}</strong>. Calendario de prueba: lunes a viernes, sin feriados.</p>
-        {employee && days > (employee.vacationDays ?? 0) && <p role="alert">La solicitud supera el saldo disponible.</p>}
+        {days > available && <p role="alert">La solicitud supera el saldo disponible.</p>}
         <FormStatus {...state} />
-        <button className="primary-button" disabled={state.busy || !employee || days < 1 || days > (employee.vacationDays ?? 0)}>Enviar solicitud</button>
+        <button className="primary-button" disabled={state.busy || days < 1 || days > available}>Enviar solicitud</button>
         <button className="reject-button" type="button" disabled={state.busy} onClick={() => dialog.current?.close()}>Cancelar</button>
       </form>
     </dialog>
-  </div>
+  </>
 }
 
 function FormStatus({ error, success }: { error: string; success: string }) {

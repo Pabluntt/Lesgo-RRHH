@@ -13,7 +13,7 @@ import {
   terminateContract,
 } from './api'
 
-type Section = 'Plantilla' | 'Licencias' | 'Vacaciones' | 'Mi Cuenta' | 'Contratos' | 'Desvinculaciones' | 'Crear usuarios'
+type Section = 'Plantilla' | 'Licencias' | 'Vacaciones' | 'Mis vacaciones' | 'Mi Cuenta' | 'Contratos' | 'Desvinculaciones' | 'Crear usuarios'
 
 const navItems: { name: Section; icon: string; group: string }[] = [
   { name: 'Plantilla', icon: '◉', group: 'PERSONAS' },
@@ -21,6 +21,7 @@ const navItems: { name: Section; icon: string; group: string }[] = [
   { name: 'Vacaciones', icon: '◷', group: 'PERSONAS' },
   { name: 'Contratos', icon: '▣', group: 'GESTIÓN' },
   { name: 'Desvinculaciones', icon: '↗', group: 'GESTIÓN' },
+  { name: 'Mis vacaciones', icon: '☼', group: 'MI ESPACIO' },
   { name: 'Mi Cuenta', icon: '○', group: 'CUENTA' },
   { name: 'Crear usuarios', icon: '+', group: 'CUENTA' },
 ]
@@ -92,6 +93,8 @@ function App() {
   const manager = ['Administrador', 'Jefe RRHH'].includes(dashboard.account.role)
   if (employee && !employee.profileComplete) return <ProfileForm token={token} employee={employee} onSaved={() => refresh(token)} onLogout={handleLogout} />
   const pendingCount = dashboard.requests.filter((request) => request.status === 'Pendiente').length
+  const visibleNav = navItems.filter(item => manager || !['Crear usuarios', 'Desvinculaciones'].includes(item.name))
+  const self = dashboard.employees.find((item) => item.id === dashboard.account.employeeId)
 
   return (
     <div className="app-shell">
@@ -99,9 +102,9 @@ function App() {
         <div className="brand"><span className="brand-mark">l</span><span>Lesgo</span></div>
         <div className="workspace-switch"><span className="workspace-avatar">L</span><span><b>Lesgo Company</b><small>Workspace de empresa</small></span><span className="chevron">⌄</span></div>
         <div className="nav-list">
-          {navItems.filter(item => manager || !['Crear usuarios', 'Desvinculaciones'].includes(item.name)).map((item, index) => (
+          {visibleNav.map((item, index) => (
             <div key={item.name}>
-              {(index === 0 || navItems[index - 1].group !== item.group) && <p className="nav-label">{item.group}</p>}
+              {(index === 0 || visibleNav[index - 1].group !== item.group) && <p className="nav-label">{item.group}</p>}
               <button className={`nav-item ${section === item.name ? 'active' : ''}`} onClick={() => { setSection(item.name); setNotice(''); setError('') }}>
                 <span className="nav-icon">{item.icon}</span>{item.name}
                 {item.name === 'Licencias' && pendingCount > 0 && <span className="nav-count">{pendingCount}</span>}
@@ -120,9 +123,9 @@ function App() {
           {notice && <div className="alert alert-success">{notice}<button onClick={() => setNotice('')}>×</button></div>}
           {section === 'Plantilla' && <PeopleView employees={dashboard.employees} requests={dashboard.requests} contracts={dashboard.contracts} />}
           {section === 'Crear usuarios' && manager && <UserForm token={token} roles={dashboard.roles} onSaved={() => refresh(token)} />}
-          {section === 'Vacaciones' && <VacationForm token={token} employees={dashboard.employees} onSaved={() => refresh(token)} />}
           {section === 'Licencias' && <RequestsView kind="Licencia médica" requests={dashboard.requests} employees={dashboard.employees} busy={busy || !manager} onDecision={(id, decision) => runAction(() => decideRequest(token, id, decision), `Solicitud ${decision.toLowerCase()}.`)} />}
           {section === 'Vacaciones' && <RequestsView kind="Vacaciones" requests={dashboard.requests} employees={dashboard.employees} busy={busy || !manager} onDecision={(id, decision) => runAction(() => decideRequest(token, id, decision), `Solicitud ${decision.toLowerCase()}.`)} />}
+          {section === 'Mis vacaciones' && <MyVacationsView token={token} employee={self} requests={dashboard.requests} onSaved={() => refresh(token)} />}
           {section === 'Contratos' && <ContractsView contracts={dashboard.contracts} employees={dashboard.employees} busy={busy || !manager} onRenew={(id) => runAction(() => renewContract(token, id), 'Contrato renovado por un año.')} onTerminate={(id) => runAction(() => terminateContract(token, id), 'Contrato terminado anticipadamente.')} />}
           {section === 'Mi Cuenta' && <AccountView account={dashboard.account} logs={dashboard.logs} />}
           {section === 'Desvinculaciones' && <TerminationView employees={dashboard.employees} />}
@@ -138,6 +141,7 @@ function sectionDescription(section: Section) {
     Plantilla: 'Conoce a las personas que hacen crecer al equipo.',
     Licencias: 'Gestiona las licencias médicas y permisos del equipo.',
     Vacaciones: 'Revisa y administra las solicitudes de vacaciones.',
+    'Mis vacaciones': 'Consulta tu saldo y solicita tus días de vacaciones.',
     'Mi Cuenta': 'Consulta la información de tu cuenta y perfil.',
     Contratos: 'Administra vigencias, renovaciones y alertas contractuales.',
     Desvinculaciones: 'Registro de procesos de salida y finiquitos.',
@@ -195,6 +199,16 @@ function StatCard({ label, value, detail, icon, tone }: { label: string; value: 
 function RequestsView({ kind, requests, employees, busy, onDecision }: { kind: 'Licencia médica' | 'Vacaciones'; requests: AbsenceRequest[]; employees: Employee[]; busy: boolean; onDecision: (id: number, decision: 'Aprobada' | 'Rechazada') => void }) {
   const visible = requests.filter((request) => kind === 'Vacaciones' ? request.type === 'Vacaciones' : request.type !== 'Vacaciones')
   return <div className="data-card"><div className="data-card-heading"><div><h2>Solicitudes de {kind === 'Vacaciones' ? 'vacaciones' : 'licencias y permisos'}</h2><p>Revisa el detalle antes de tomar una decisión.</p></div><span className="soft-chip">{visible.filter((item) => item.status === 'Pendiente').length} pendientes</span></div>{visible.length ? <div className="table-scroll"><table><thead><tr><th>PERSONA</th><th>TIPO</th><th>PERÍODO</th><th>DÍAS</th><th>ESTADO</th><th>ACCIÓN</th></tr></thead><tbody>{visible.map((item) => { const person = employees.find((employee) => employee.id === item.employeeId); return <tr key={item.id}><td><div className="table-person"><div className="avatar avatar-lilac">{initials(person?.name ?? '?')}</div><div><b>{person?.name}</b><small>{person?.department}</small></div></div></td><td>{item.type}<small className="table-secondary">{item.reason}</small></td><td>{formatDate(item.startDate)}<small className="table-secondary">hasta {formatDate(item.endDate)}</small></td><td>{item.days} días</td><td><StatusBadge status={item.status} /></td><td>{item.status === 'Pendiente' ? <div className="row-actions"><button className="approve-button" disabled={busy} onClick={() => onDecision(item.id, 'Aprobada')}>Aprobar</button><button className="reject-button" disabled={busy} onClick={() => onDecision(item.id, 'Rechazada')}>Rechazar</button></div> : <span className="muted">Resuelta</span>}</td></tr> })}</tbody></table></div> : <EmptyState title="No hay solicitudes" text="Las nuevas solicitudes aparecerán aquí." />}</div>
+}
+
+function MyVacationsView({ token, employee, requests, onSaved }: { token: string; employee?: Employee; requests: AbsenceRequest[]; onSaved: () => Promise<void> }) {
+  if (!employee) return <div className="data-card"><EmptyState title="Sin empleado asociado" text="Tu cuenta no está vinculada a un empleado, por lo que no puedes solicitar vacaciones." /></div>
+  const own = requests.filter((request) => request.employeeId === employee.id && request.type === 'Vacaciones')
+  const sumDays = (status: AbsenceRequest['status']) => own.filter((request) => request.status === status).reduce((sum, request) => sum + request.days, 0)
+  return <>
+    <div className="stats-grid"><StatCard label="Saldo disponible" value={employee.vacationDays ?? 0} detail="Días hábiles" icon="☼" tone="purple" /><StatCard label="En revisión" value={sumDays('Pendiente')} detail="Días pendientes de aprobación" icon="◷" tone="orange" /><StatCard label="Aprobados" value={sumDays('Aprobada')} detail="Días hábiles" icon="✓" tone="green" /><StatCard label="Solicitudes" value={own.length} detail="Total realizadas" icon="▤" tone="blue" /></div>
+    <div className="data-card"><div className="data-card-heading"><div><h2>Mis solicitudes de vacaciones</h2><p>RRHH revisará cada solicitud y te notificará su resolución.</p></div><VacationForm token={token} employee={employee} onSaved={onSaved} /></div>{own.length ? <div className="table-scroll"><table><thead><tr><th>PERÍODO</th><th>DÍAS</th><th>MOTIVO</th><th>ESTADO</th></tr></thead><tbody>{own.map((item) => <tr key={item.id}><td>{formatDate(item.startDate)}<small className="table-secondary">hasta {formatDate(item.endDate)}</small></td><td>{item.days} días</td><td>{item.reason}</td><td><StatusBadge status={item.status} /></td></tr>)}</tbody></table></div> : <EmptyState title="Aún no has solicitado vacaciones" text="Tus solicitudes y su estado aparecerán aquí." />}</div>
+  </>
 }
 
 function ContractsView({ contracts, employees, busy, onRenew, onTerminate }: { contracts: EmploymentContract[]; employees: Employee[]; busy: boolean; onRenew: (id: number) => void; onTerminate: (id: number) => void }) {
