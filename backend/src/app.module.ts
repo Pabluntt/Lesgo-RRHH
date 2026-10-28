@@ -1,20 +1,26 @@
 import { Module } from '@nestjs/common'
-import { JwtModule } from '@nestjs/jwt'
-import { AuthController } from './auth/auth.controller'
-import { AuthService } from './auth/auth.service'
-import { JwtAuthGuard } from './auth/jwt-auth.guard'
-import { HrController } from './hr/hr.controller'
-import { HrService } from './hr/hr.service'
-import { HealthController } from './health.controller'
+import { AuditModule } from './audit/audit.module'
+import { AuthModule } from './auth/auth.module'
+import { ContractsModule } from './contracts/contracts.module'
+import { DashboardModule } from './dashboard/dashboard.module'
+import { EmployeesModule } from './employees/employees.module'
+import { HealthModule } from './health/health.module'
+import { LicensesModule } from './licenses/licenses.module'
+import { TerminationsModule } from './terminations/terminations.module'
+import { VacationsModule } from './vacations/vacations.module'
 
+// Cada carpeta de src es un módulo de dominio. Dashboard solo junta la respuesta del panel.
 @Module({
   imports: [
-    JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'lesgo-rrhh-demo-secret-change-me',
-      signOptions: { expiresIn: '8h' },
-    }),
+    AuthModule,
+    HealthModule,
+    EmployeesModule,
+    LicensesModule,
+    VacationsModule,
+    ContractsModule,
+    TerminationsModule,
+    AuditModule,
+    DashboardModule,
   ],
-  controllers: [HealthController, AuthController, HrController],
-  providers: [AuthService, HrService, JwtAuthGuard],
 })
 export class AppModule {}
