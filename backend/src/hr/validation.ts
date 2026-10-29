@@ -23,7 +23,7 @@ export function rut(value: unknown) {
   let sum = 0
   Array.from(body).reverse().forEach((digit, index) => { sum += Number(digit) * (2 + index % 6) })
   const remainder = 11 - sum % 11
-  if (check !== (remainder === 11 ? '0' : remainder === 10 ? 'K' : String(remainder))) throw new BadRequestException('Dígito verificador del RUT incorrecto')
+  if (check !== (remainder === 11 ? '0' : remainder === 10 ? 'K' : String(remainder))) throw new BadRequestException('RUT incorrecto')
   return normalized
 }
 
